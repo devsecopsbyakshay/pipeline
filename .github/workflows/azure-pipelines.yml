@@ -14,6 +14,10 @@ permissions:
   pull-requests: write
 
 jobs:
+
+  # =====================================================
+  # 1. Terraform validation
+  # =====================================================
   terraform:
     name: Terraform Validation
     runs-on: ubuntu-latest
@@ -37,9 +41,21 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+
+  # =====================================================
+  # 2. Create PR
+  # =====================================================
+  create-pr:
+    name: Create Pull Request
+    needs: terraform
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Create Pull Request
-        if: github.event_name == 'push'
-        id: create_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -51,7 +67,8 @@ jobs:
             --jq '.[0].number')
 
           if [ -z "$PR_NUMBER" ]; then
-            echo "Creating PR..."
+
+            echo "Creating Pull Request..."
 
             gh pr create \
               --base main \
@@ -59,70 +76,55 @@ jobs:
               --title "Auto PR: ${{ github.ref_name }} → main" \
               --body "Automatically created after Terraform validation passed."
 
-            PR_NUMBER=$(gh pr list \
-              --head "${{ github.ref_name }}" \
-              --base main \
-              --state open \
-              --json number \
-              --jq '.[0].number')
           else
-            echo "Existing PR found."
+
+            echo "PR already exists: #$PR_NUMBER"
+
           fi
 
-          echo "PR Number: $PR_NUMBER"
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for PR Checks
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_NUMBER="${{ steps.create_pr.outputs.pr_number }}"
+  # =====================================================
+  # 3. PR validation
+  # =====================================================
+  pr-validation:
+    name: PR Validation
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
 
-          echo "Waiting for PR #$PR_NUMBER checks..."
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-          for i in {1..30}; do
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
-            echo "Attempt $i of 30"
+      - name: Terraform Init
+        run: terraform init
 
-            STATUS=$(gh pr checks "$PR_NUMBER" \
-              --json state \
-              --jq '.[].state' 2>/dev/null || true)
+      - name: Terraform Format Check
+        run: terraform fmt -check
 
-            echo "Check status:"
-            echo "$STATUS"
+      - name: Terraform Validate
+        run: terraform validate
 
-            if echo "$STATUS" | grep -q "FAILURE"; then
-              echo "PR checks failed."
-              exit 1
-            fi
 
-            if echo "$STATUS" | grep -q "ERROR"; then
-              echo "PR checks failed with error."
-              exit 1
-            fi
+  # =====================================================
+  # 4. Merge PR
+  # =====================================================
+  merge-pr:
+    name: Merge Pull Request
+    needs: pr-validation
+    if: github.event_name == 'pull_request' && needs.pr-validation.result == 'success'
+    runs-on: ubuntu-latest
 
-            if [ -n "$STATUS" ] && \
-               ! echo "$STATUS" | grep -Eq "PENDING|QUEUED|IN_PROGRESS"; then
-              echo "All PR checks passed."
-              exit 0
-            fi
-
-            echo "Checks still running..."
-            sleep 10
-
-          done
-
-          echo "Timed out waiting for PR checks."
-          exit 1
-
+    steps:
       - name: Merge Pull Request
-        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER="${{ steps.create_pr.outputs.pr_number }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
 
+          echo "Terraform PR validation passed."
           echo "Merging PR #$PR_NUMBER..."
 
           gh pr merge "$PR_NUMBER" \
@@ -130,3 +132,4 @@ jobs:
             --delete-branch
 
           echo "PR #$PR_NUMBER merged successfully."
+
