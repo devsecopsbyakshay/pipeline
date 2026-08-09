@@ -1,195 +1,81 @@
-# Workflow ka naam jo GitHub Actions mein show hoga
-name: Terraform Preprod Plan
+name: Terraform CI and Auto PR
 
-# Batata hai ki workflow kis event par trigger hoga
 on:
-
-  # Jab repository mein push hoga tab workflow chalega
   push:
-
-    # Sirf feature/ se start hone wali branches par workflow chalega
     branches:
-      - 'feature/**'
+      - 'feature/*'
 
-# GitHub Actions ko required permissions deta hai
 permissions:
-
-  # Repository contents ko read/write karne ki permission
   contents: write
-
-  # Pull Request ko read/write karne ki permission
   pull-requests: write
 
-# Workflow ke andar jobs define hoti hain
 jobs:
-
-  # Terraform Plan ke liye job
-  terraform-plan:
-
-    # GitHub Actions UI mein job ka display name
-    name: Terraform Plan
-
-    # Job Ubuntu latest runner par chalegi
+  terraform:
+    name: Terraform Validation
     runs-on: ubuntu-latest
 
-    # Job ke saare steps
     steps:
-
-      # GitHub repository ka code runner par checkout karta hai
-      - name: Checkout Repository
-
-        # Official GitHub checkout action
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-
-      # Runner par Terraform install/setup karta hai
       - name: Setup Terraform
-
-        # HashiCorp ka official Terraform setup action
         uses: hashicorp/setup-terraform@v3
 
+      - name: Terraform Version
+        run: terraform version
 
-      # Azure mein login karta hai
-      - name: Azure Login
-
-        # Microsoft ka Azure Login action
-        uses: azure/login@v2
-
-        # Azure Login action ke inputs
-        with:
-
-          # GitHub Secret se Azure service principal credentials leta hai
-          creds: '${{ secrets.pipeline_secret }}'
-
-
-      # Terraform files ka formatting check karta hai
-      - name: Terraform Format Check
-
-        # Terraform commands is directory ke andar run hongi
-        working-directory: Parent/preprod
-
-        # Check karta hai ki Terraform files properly formatted hain
-        # Agar formatting incorrect hui to step fail hoga
-        run: terraform fmt -check -recursive
-
-
-      # Terraform providers/modules initialize karta hai
       - name: Terraform Init
-
-        # Terraform command Parent/preprod ke andar run hogi
-        working-directory: Parent/preprod
-
-        # Terraform working directory ko initialize karta hai
         run: terraform init
 
+      - name: Terraform Format Check
+        run: terraform fmt -check
 
-      # Terraform configuration ki syntax/structure validate karta hai
       - name: Terraform Validate
-
-        # Terraform command Parent/preprod ke andar run hogi
-        working-directory: Parent/preprod
-
-        # Terraform configuration validate karta hai
         run: terraform validate
 
-
-      # Azure infrastructure ka Terraform Plan generate karta hai
-      - name: Terraform Plan
-
-        # Terraform command Parent/preprod ke andar run hogi
-        working-directory: Parent/preprod
-
-        # Infrastructure mein kya changes honge uska plan banata hai
-        # -out=tfplan plan ko tfplan file mein save karta hai
-        run: terraform plan -out=tfplan
-
-
-      # =========================================================
-      # CREATE PULL REQUEST
-      # Ye step tabhi chalega jab upar ke saare steps successful hon
-      # =========================================================
-
-            # ==========================================
-      # CREATE PULL REQUEST
-      # Runs only when Terraform Plan succeeds
-      # ==========================================
-
       - name: Create Pull Request
-        if: success()
+        id: create_pr
         env:
-          # GitHub token used by GitHub CLI
-          GH_TOKEN: ${{ github.token }}
-
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-
-          # Show message in workflow log
-          echo "Checking whether PR already exists..."
-
-          # Find an existing open PR from current feature branch to main
-          PR_NUMBER=$(gh pr list --repo "${{ github.repository }}" --base main --head "${GITHUB_REF_NAME}" --state open --json number --jq '.[0].number')
-
-          # Check whether an open PR was found
-          if [ -n "$PR_NUMBER" ]; then
-
-            # PR already exists
-            echo "PR #$PR_NUMBER already exists."
-
-          else
-
-            # No PR exists, so create a new PR
-            echo "Creating Pull Request..."
-
-            # Create Pull Request
-            gh pr create --repo "${{ github.repository }}" --base main --head "${GITHUB_REF_NAME}" --title "Terraform Preprod - ${GITHUB_REF_NAME}" --body "Terraform Plan completed successfully."
-
-          fi
-
-
-      # =========================================================
-      # AUTO MERGE PULL REQUEST
-      # Ye step successful Plan ke baad PR ko merge karega
-      # =========================================================
-
-            # ==========================================
-      # MERGE PULL REQUEST
-      # Runs only after PR has been created successfully
-      # ==========================================
-
-      - name: Merge Pull Request
-        if: success()
-        env:
-          # GitHub token used by GitHub CLI
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-
-        run: |
-
-          # Log message
-          echo "Finding Pull Request..."
-
-          # Find the open PR from current feature branch to main
           PR_NUMBER=$(gh pr list \
-            --repo "${{ github.repository }}" \
+            --head "${{ github.ref_name }}" \
             --base main \
-            --head "${GITHUB_REF_NAME}" \
             --state open \
             --json number \
             --jq '.[0].number')
 
-          # Check whether PR number was found
           if [ -z "$PR_NUMBER" ]; then
+            echo "Creating PR..."
 
-            # No PR found
-            echo "No open Pull Request found."
+            gh pr create \
+              --base main \
+              --head "${{ github.ref_name }}" \
+              --title "Auto PR: ${{ github.ref_name }} → main" \
+              --body "Automatically created after Terraform validation passed."
 
-            # Stop workflow with failure
-            exit 1
+            PR_NUMBER=$(gh pr list \
+              --head "${{ github.ref_name }}" \
+              --base main \
+              --state open \
+              --json number \
+              --jq '.[0].number')
           fi
 
-          # Print PR number
+          echo "PR Number: $PR_NUMBER"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Merge Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.create_pr.outputs.pr_number }}"
+
+          echo "Terraform validation passed."
           echo "Merging PR #$PR_NUMBER..."
 
-          # Merge the Pull Request
           gh pr merge "$PR_NUMBER" \
-            --repo "${{ github.repository }}" \
-            --merge \
+            --squash \
             --delete-branch
+
+          echo "PR #$PR_NUMBER merged successfully."
