@@ -34,7 +34,7 @@ jobs:
         run: terraform validate
 
       - name: Create Pull Request
-        if: success()
+        id: create_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -46,22 +46,51 @@ jobs:
             --jq '.[0].number')
 
           if [ -z "$PR_NUMBER" ]; then
+            echo "No open PR found. Creating new PR..."
+
             gh pr create \
               --base main \
               --head "${{ github.ref_name }}" \
               --title "Auto PR: ${{ github.ref_name }} → main" \
               --body "Automatically created after Terraform validation passed."
-            
+
             PR_NUMBER=$(gh pr list \
               --head "${{ github.ref_name }}" \
               --base main \
               --state open \
               --json number \
               --jq '.[0].number')
+          else
+            echo "Existing PR found."
           fi
 
           echo "PR Number: $PR_NUMBER"
 
-          gh pr merge "$PR_NUMBER" \
-            --auto \
-            --squash
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Enable Auto Merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.create_pr.outputs.pr_number }}"
+
+          echo "PR Number: $PR_NUMBER"
+          echo "Waiting for PR to become ready..."
+
+          for i in {1..6}; do
+            echo "Attempt $i of 6..."
+
+            if gh pr merge "$PR_NUMBER" \
+              --auto \
+              --squash; then
+
+              echo "Auto-merge enabled successfully."
+              exit 0
+            fi
+
+            echo "PR is not ready yet. Waiting 10 seconds..."
+            sleep 10
+          done
+
+          echo "Failed to enable auto-merge after 6 attempts."
+          exit 1
