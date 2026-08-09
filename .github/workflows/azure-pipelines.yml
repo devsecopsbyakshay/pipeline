@@ -1,13 +1,13 @@
-name: Terraform CI
+name: Terraform CI and Auto PR
 
 on:
   push:
     branches:
       - 'feature/*'
 
-  pull_request:
-    branches:
-      - main
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   terraform:
@@ -32,3 +32,14 @@ jobs:
 
       - name: Terraform Validate
         run: terraform validate
+
+      - name: Create Pull Request
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --base main \
+            --head "${{ github.ref_name }}" \
+            --title "Auto PR: ${{ github.ref_name }} → main" \
+            --body "Automatically created after Terraform validation passed."
