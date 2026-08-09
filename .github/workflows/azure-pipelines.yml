@@ -1,21 +1,34 @@
-trigger:
-- feature/*
+name: Terraform CI
 
-pool:
-  vmImage: ubuntu-latest
+on:
+  push:
+    branches:
+      - 'feature/*'
 
-steps:
+  pull_request:
+    branches:
+      - 'feature/*'
 
-- checkout: self
+jobs:
+  terraform:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
 
-- script: terraform version
-  displayName: "Terraform Version"
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-- script: terraform init
-  displayName: "Terraform Init"
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
-- script: terraform fmt -check
-  displayName: "Terraform Format Check"
+      - name: Terraform Version
+        run: terraform version
 
-- script: terraform validate
-  displayName: "Terraform Validate"
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check
+
+      - name: Terraform Validate
+        run: terraform validate
