@@ -1,108 +1,36 @@
-
-name: Terraform CI and Auto PR
+name: Terraform Preprod Apply
 
 on:
   push:
     branches:
-      - 'feature/*'
-
-  pull_request:
-    branches:
       - main
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
 
-  # =====================================================
-  # FEATURE BRANCH
-  # Terraform validation + PR creation
-  # =====================================================
-  feature-validation:
-    name: Terraform Validation
-    if: github.event_name == 'push'
+  terraform-apply:
+    name: Terraform Apply
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Terraform Format Check
-        run: terraform fmt -check
-
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Create Pull Request
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_NUMBER=$(gh pr list \
-            --head "${{ github.ref_name }}" \
-            --base main \
-            --state open \
-            --json number \
-            --jq '.[0].number')
-
-          if [ -z "$PR_NUMBER" ]; then
-            echo "Creating Pull Request..."
-
-            gh pr create \
-              --base main \
-              --head "${{ github.ref_name }}" \
-              --title "Auto PR: ${{ github.ref_name }} → main" \
-              --body "Automatically created after Terraform validation passed."
-          else
-            echo "PR already exists: #$PR_NUMBER"
-          fi
-
-
-  # =====================================================
-  # PULL REQUEST
-  # Terraform validation + merge
-  # =====================================================
-  pull-request-validation:
-    name: PR Terraform Validation
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '${{ secrets.pipeline_secret }}'
 
       - name: Terraform Init
+        working-directory: Parent/preprod
         run: terraform init
 
-      - name: Terraform Format Check
-        run: terraform fmt -check
-
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Merge Pull Request
-        if: success()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-
-          echo "PR validation passed."
-          echo "Merging PR #$PR_NUMBER..."
-
-          gh pr merge "$PR_NUMBER" \
-            --squash \
-            --delete-branch
-
-          echo "PR #$PR_NUMBER merged successfully."
-
+      - name: Terraform Apply
+        working-directory: Parent/preprod
+        run: terraform apply -auto-approve
