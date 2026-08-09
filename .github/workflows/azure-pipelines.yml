@@ -1,4 +1,3 @@
-```yaml
 name: Terraform CI and Auto PR
 
 on:
@@ -122,4 +121,4 @@ jobs:
             --delete-branch
 
           echo "PR #$PR_NUMBER merged successfully."
-```
+
