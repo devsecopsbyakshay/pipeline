@@ -5,24 +5,24 @@ variable "rgs" {
   }))
 }
 
-variable "vnets" {
-  type = map(object({
-    virtual_network_name                = string
-    virtual_network_location            = string
-    virtual_network_resource_group_name = string
-    virtual_network_address_space       = list(string)
+# variable "vnets" {
+#   type = map(object({
+#     virtual_network_name                = string
+#     virtual_network_location            = string
+#     virtual_network_resource_group_name = string
+#     virtual_network_address_space       = list(string)
 
-  }))
-}
+#   }))
+# }
 
-variable "subnets" {
-  type = map(object({
-    subnet_name                 = string
-    subnet_resource_group_name  = string
-    subnet_virtual_network_name = string
-    subnet_address_prefixes     = list(string)
-  }))
-}
+# variable "subnets" {
+#   type = map(object({
+#     subnet_name                 = string
+#     subnet_resource_group_name  = string
+#     subnet_virtual_network_name = string
+#     subnet_address_prefixes     = list(string)
+#   }))
+# }
 
 # variable "pips" {
 #   type = map(object({

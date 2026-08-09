@@ -3,17 +3,17 @@ module "module_azurerm_resource_group" {
   rgs    = var.rgs
 }
 
-module "module_azurerm_virtual_network" {
-  depends_on = [module.module_azurerm_resource_group]
-  source     = "../../Child/azurerm_virtual_network"
-  vnets      = var.vnets
-}
+# module "module_azurerm_virtual_network" {
+#   depends_on = [module.module_azurerm_resource_group]
+#   source     = "../../Child/azurerm_virtual_network"
+#   vnets      = var.vnets
+# }
 
-module "module_azurerm_subnet" {
-  depends_on = [module.module_azurerm_virtual_network]
-  source     = "../../Child/azurerm_subnet"
-  subnets    = var.subnets
-}
+# module "module_azurerm_subnet" {
+#   depends_on = [module.module_azurerm_virtual_network]
+#   source     = "../../Child/azurerm_subnet"
+#   subnets    = var.subnets
+# }
 
 # module "module_azurerm_pip" {
 #   depends_on = [module.module_azurerm_resource_group]
