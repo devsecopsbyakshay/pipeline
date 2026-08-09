@@ -5,6 +5,10 @@ on:
     branches:
       - 'feature/*'
 
+  pull_request:
+    branches:
+      - main
+
 permissions:
   contents: write
   pull-requests: write
@@ -34,6 +38,7 @@ jobs:
         run: terraform validate
 
       - name: Create Pull Request
+        if: github.event_name == 'push'
         id: create_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -46,7 +51,7 @@ jobs:
             --jq '.[0].number')
 
           if [ -z "$PR_NUMBER" ]; then
-            echo "No open PR found. Creating new PR..."
+            echo "Creating PR..."
 
             gh pr create \
               --base main \
@@ -68,6 +73,7 @@ jobs:
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Wait for PR Checks
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -77,11 +83,13 @@ jobs:
 
           for i in {1..30}; do
 
-            echo "Checking PR status - Attempt $i of 30"
+            echo "Attempt $i of 30"
 
-            STATUS=$(gh pr checks "$PR_NUMBER" --json state --jq '.[].state' 2>/dev/null || true)
+            STATUS=$(gh pr checks "$PR_NUMBER" \
+              --json state \
+              --jq '.[].state' 2>/dev/null || true)
 
-            echo "Current check status:"
+            echo "Check status:"
             echo "$STATUS"
 
             if echo "$STATUS" | grep -q "FAILURE"; then
@@ -90,16 +98,17 @@ jobs:
             fi
 
             if echo "$STATUS" | grep -q "ERROR"; then
-              echo "PR checks have an error."
+              echo "PR checks failed with error."
               exit 1
             fi
 
-            if [ -n "$STATUS" ] && ! echo "$STATUS" | grep -Eq "PENDING|QUEUED|IN_PROGRESS"; then
-              echo "PR checks completed successfully."
+            if [ -n "$STATUS" ] && \
+               ! echo "$STATUS" | grep -Eq "PENDING|QUEUED|IN_PROGRESS"; then
+              echo "All PR checks passed."
               exit 0
             fi
 
-            echo "Checks are still running. Waiting 10 seconds..."
+            echo "Checks still running..."
             sleep 10
 
           done
@@ -108,12 +117,12 @@ jobs:
           exit 1
 
       - name: Merge Pull Request
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_NUMBER="${{ steps.create_pr.outputs.pr_number }}"
 
-          echo "All PR checks passed."
           echo "Merging PR #$PR_NUMBER..."
 
           gh pr merge "$PR_NUMBER" \
@@ -121,4 +130,3 @@ jobs:
             --delete-branch
 
           echo "PR #$PR_NUMBER merged successfully."
-
