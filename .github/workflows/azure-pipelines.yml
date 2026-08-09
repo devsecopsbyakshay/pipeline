@@ -38,21 +38,29 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr create \
-            --base main \
-            --head "${{ github.ref_name }}" \
-            --title "Auto PR: ${{ github.ref_name }} → main" \
-            --body "Automatically created after Terraform validation passed."
-                  - name: Enable Auto Merge
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
           PR_NUMBER=$(gh pr list \
             --head "${{ github.ref_name }}" \
             --base main \
             --state open \
             --json number \
             --jq '.[0].number')
+
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create \
+              --base main \
+              --head "${{ github.ref_name }}" \
+              --title "Auto PR: ${{ github.ref_name }} → main" \
+              --body "Automatically created after Terraform validation passed."
+            
+            PR_NUMBER=$(gh pr list \
+              --head "${{ github.ref_name }}" \
+              --base main \
+              --state open \
+              --json number \
+              --jq '.[0].number')
+          fi
+
+          echo "PR Number: $PR_NUMBER"
 
           gh pr merge "$PR_NUMBER" \
             --auto \
