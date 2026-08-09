@@ -1,0 +1,67 @@
+name: Terraform CI and Auto PR
+
+on:
+  push:
+    branches:
+      - 'feature/*'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  terraform:
+    name: Terraform Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Version
+        run: terraform version
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Create Pull Request
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list \
+            --head "${{ github.ref_name }}" \
+            --base main \
+            --state open \
+            --json number \
+            --jq '.[0].number')
+
+          if [ -z "$PR_NUMBER" ]; then
+            gh pr create \
+              --base main \
+              --head "${{ github.ref_name }}" \
+              --title "Auto PR: ${{ github.ref_name }} → main" \
+              --body "Automatically created after Terraform validation passed."
+            
+            PR_NUMBER=$(gh pr list \
+              --head "${{ github.ref_name }}" \
+              --base main \
+              --state open \
+              --json number \
+              --jq '.[0].number')
+          fi
+
+          echo "PR Number: $PR_NUMBER"
+
+          gh pr merge "$PR_NUMBER" \
+            --auto \
+            --squash
