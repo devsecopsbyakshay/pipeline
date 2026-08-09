@@ -1,14 +1,14 @@
 
 # Resource Group
 # rgs = {
-  # rg_detail_1 = {
-  #   resource_group_name     = "RG_Akshay"
-  #   resource_group_location = "westus"
-  # }
+# rg_detail_1 = {
+#   resource_group_name     = "RG_Akshay"
+#   resource_group_location = "westus"
+# }
 
-  rgs = {
+rgs = {
   rg_detail_1 = {
-    resource_group_name     = "RG_Akshay 2"
+    resource_group_name     = "RG_Akshay_2"
     resource_group_location = "westus"
   }
 }
