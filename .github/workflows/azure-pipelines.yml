@@ -1,3 +1,4 @@
+```yaml
 name: Terraform CI and Auto PR
 
 on:
@@ -65,32 +66,60 @@ jobs:
           fi
 
           echo "PR Number: $PR_NUMBER"
-
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-      - name: Enable Auto Merge
+      - name: Wait for PR Checks
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR_NUMBER="${{ steps.create_pr.outputs.pr_number }}"
 
-          echo "PR Number: $PR_NUMBER"
-          echo "Waiting for PR to become ready..."
+          echo "Waiting for PR #$PR_NUMBER checks..."
 
-          for i in {1..6}; do
-            echo "Attempt $i of 6..."
+          for i in {1..30}; do
 
-            if gh pr merge "$PR_NUMBER" \
-              --auto \
-              --squash; then
+            echo "Checking PR status - Attempt $i of 30"
 
-              echo "Auto-merge enabled successfully."
+            STATUS=$(gh pr checks "$PR_NUMBER" --json state --jq '.[].state' 2>/dev/null || true)
+
+            echo "Current check status:"
+            echo "$STATUS"
+
+            if echo "$STATUS" | grep -q "FAILURE"; then
+              echo "PR checks failed."
+              exit 1
+            fi
+
+            if echo "$STATUS" | grep -q "ERROR"; then
+              echo "PR checks have an error."
+              exit 1
+            fi
+
+            if [ -n "$STATUS" ] && ! echo "$STATUS" | grep -Eq "PENDING|QUEUED|IN_PROGRESS"; then
+              echo "PR checks completed successfully."
               exit 0
             fi
 
-            echo "PR is not ready yet. Waiting 10 seconds..."
+            echo "Checks are still running. Waiting 10 seconds..."
             sleep 10
+
           done
 
-          echo "Failed to enable auto-merge after 6 attempts."
+          echo "Timed out waiting for PR checks."
           exit 1
+
+      - name: Merge Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.create_pr.outputs.pr_number }}"
+
+          echo "All PR checks passed."
+          echo "Merging PR #$PR_NUMBER..."
+
+          gh pr merge "$PR_NUMBER" \
+            --squash \
+            --delete-branch
+
+          echo "PR #$PR_NUMBER merged successfully."
+```
